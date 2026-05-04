@@ -18,3 +18,4 @@ tests.ts
 scratch.txt
 .github
 *.yml
+*.md

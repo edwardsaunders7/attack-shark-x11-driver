@@ -33,30 +33,29 @@ npm install attack-shark-x11-driver
 import { AttackSharkX11, ConnectionMode, Rate } from 'attack-shark-x11-driver';
 
 const driver = new AttackSharkX11({
-  connectionMode: ConnectionMode.Adapter, // or Wired
-  delayMs: 300 // Recommended safe delay between packets
+	connectionMode: ConnectionMode.Adapter, // or Wired
+	delayMs: 300, // Recommended safe delay between packets
 });
 
 try {
-  await driver.open();
+	await driver.open();
 
-  // Set Polling Rate to 1000Hz (eSports)
-  await driver.setPollingRate(Rate.eSports);
+	// Set Polling Rate to 1000Hz (eSports)
+	await driver.setPollingRate(Rate.eSports);
 
-  // Configure DPI Stages
-  await driver.setDpi({
-    dpiValues: [800, 1600, 2400, 3200, 5000, 22000],
-    activeStage: 2
-  });
+	// Configure DPI Stages
+	await driver.setDpi({
+		dpiValues: [800, 1600, 2400, 3200, 5000, 22000],
+		activeStage: 2,
+	});
 
-  // Get Battery Level
-  const battery = await driver.getBatteryLevel();
-  console.log(`Battery: ${battery}%`);
-
+	// Get Battery Level
+	const battery = await driver.getBatteryLevel();
+	console.log(`Battery: ${battery}%`);
 } catch (error) {
-  console.error('Driver error:', error);
+	console.error('Driver error:', error);
 } finally {
-  await driver.close();
+	await driver.close();
 }
 ```
 
@@ -65,19 +64,19 @@ try {
 To access the device without root permissions on Linux, you need to create an udev rule:
 
 1. Create the rule file:
-   ```bash
-   sudo nano /etc/udev/rules.d/99-attack-shark-x11.rules
-   ```
+    ```bash
+    sudo nano /etc/udev/rules.d/99-attack-shark-x11.rules
+    ```
 2. Add the following lines:
-   ```udev
-   SUBSYSTEM=="usb", ATTR{idVendor}=="1d57", ATTR{idProduct}=="fa60", MODE="0666", GROUP="plugdev"
-   SUBSYSTEM=="usb", ATTR{idVendor}=="1d57", ATTR{idProduct}=="fa55", MODE="0666", GROUP="plugdev"
-   ```
+    ```udev
+    SUBSYSTEM=="usb", ATTR{idVendor}=="1d57", ATTR{idProduct}=="fa60", MODE="0666", GROUP="plugdev"
+    SUBSYSTEM=="usb", ATTR{idVendor}=="1d57", ATTR{idProduct}=="fa55", MODE="0666", GROUP="plugdev"
+    ```
 3. Reload rules:
-   ```bash
-   sudo udevadm control --reload-rules
-   sudo udevadm trigger
-   ```
+    ```bash
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+    ```
 
 ## Supported Hardware
 
@@ -87,7 +86,7 @@ To access the device without root permissions on Linux, you need to create an ud
 | Attack Shark X11 | 2.4GHz wireless | Supported  |
 | Attack Shark X11 | Bluetooth       | Not tested |
 
-*Note: Attack Shark R1 might be compatible but hasn't been verified yet.*
+_Note: Attack Shark R1 might be compatible but hasn't been verified yet._
 
 ## Important Warnings ⚠️
 
@@ -107,4 +106,4 @@ MIT © [HarukaYamamoto0](https://github.com/HarukaYamamoto0)
 
 ---
 
-*Disclaimer: This project is not affiliated with Attack Shark. Use at your own risk.*
+_Disclaimer: This project is not affiliated with Attack Shark. Use at your own risk._
