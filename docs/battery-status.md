@@ -1,144 +1,71 @@
-# Battery Status Interrupt Protocol (Interface 2 – Endpoint 0x83)
+# Battery Status Protocol
 
-This document describes how to receive battery status updates from the **Attack Shark X11** mouse using the USB interrupt IN endpoint.
+This document describes the USB interrupt protocol used to retrieve the battery level from the **Attack Shark X11** mouse. This protocol is specifically active when the device is operating in **Wireless and Bluetooth Mode**.
 
-Unlike configuration reports (Feature Reports via `SET_REPORT`), battery status is delivered asynchronously through an interrupt endpoint.
+## Communication Specifications
 
-## Device Identification
+To receive battery updates, the driver must listen to the following USB interface and endpoint:
 
-The Attack Shark X11 exposes two Product IDs:
+- **Interface**: `2`
+- **Endpoint**: `0x83` (Interrupt IN)
+- **Transfer Type**: Interrupt
+- **Polling Interval**: Typically configured to 1 ms or 10 ms depending on the host requirement.
 
-| Mode     | PID      |
-|----------|----------|
-| Wireless | `0xFA60` |
-| Wired    | `0xFA55` |
+## Data Packet Structure
 
-Vendor ID:
+The device pushes packets automatically. Each report follows a specific 5-byte signature followed by the battery percentage.
 
-* **VID**: `0x1D57`
+| Byte Index | Field       | Value (Hex) | Description                                  |
+|------------|-------------|-------------|----------------------------------------------|
+| 0          | Report Tag  | `0x03`      | Identifies the type of report (Battery/HID)  |
+| 1          | Prefix 1    | `0x55`      | Fixed signature byte                         |
+| 2          | Prefix 2    | `0x40`      | Fixed signature byte                         |
+| 3          | Prefix 3    | `0x01`      | Fixed signature byte                         |
+| 4          | Battery     | `0x00-0x64` | Battery level in decimal (0 to 100%)         |
 
-Battery reporting is primarily relevant in **Wireless mode**.
+**Example Payload:**
+`03 55 40 01 50` -> `0x50` is `80` in decimal, representing **80% battery**.
 
-## USB Interface and Endpoint
+## Device Behavior
 
-Battery events are emitted on:
+1.  **Autonomous Emission**: The mouse emits these packets periodically while in wireless mode. No request (`SET_REPORT`) or handshake is required to start the stream.
+2.  **Wireless Only**: This protocol is only active on the Wireless Adapter. When connected via USB cable (Wired Mode), battery status is not reported through this specific interrupt endpoint.
+3.  **No Polling Command**: Unlike DPI or Polling Rate settings which require sending a command to receive a state, the device pushes the battery level whenever it detects a change or at fixed intervals.
+4.  **Charging State**: While charging in wired mode, the device identifies as a different USB product, and the interrupt endpoint on Interface 2 of the adapter (if still plugged) will not receive data from the mouse.
 
-* **Interface Index**: `2`
-* **Endpoint Address**: `0x83`
-* **Endpoint Type**: Interrupt IN
+## Implementation Guide (TypeScript)
 
-This endpoint pushes reports automatically while the device is operating wirelessly and discharging.
-
-## Packet Structure
-
-Each interrupt transfer returns a small status packet.
-
-Observed packet length: 5 bytes (minimum).
-
-Example (hex):
-
-```
-03 55 40 01 64
-```
-
-| Index | Field      | Type    | Description                        |
-|-------|------------|---------|------------------------------------|
-| 0     | Report Tag | `uint8` | Constant value `0x03`              |
-| 1     | Unknown    | `uint8` | Observed `0x55`                    |
-| 2     | Unknown    | `uint8` | Observed `0x40`                    |
-| 3     | Unknown    | `uint8` | Observed `0x01`                    |
-| 4     | Battery    | `uint8` | Battery percentage (0–100 decimal) |
-
-## Battery Value
-
-The battery percentage is located at:
-
-```
-Byte[4]
-```
-
-It is a direct decimal value.
-
-Example:
-
-```
-0x64 → 100%
-0x32 → 50%
-0x0A → 10%
-```
-
-No checksum or additional transformation is required.
-
-## Behavior Notes
-
-### 1. Emission Conditions
-
-Battery reports are:
-
-* Emitted automatically while in wireless mode
-* Emitted periodically while discharging
-* Not emitted while charging (no interrupt events observed)
-
-When charging via cable, the device stops sending interrupt battery packets.
-
-### 2. No Handshake Required
-
-No prior control transfer or feature report is required to enable battery reporting.
-
-Simply:
-
-1. Open device
-2. Claim Interface 2
-3. Start polling endpoint `0x83`
-
-## Example (libusb / node-usb style)
+The following example demonstrates how to correctly filter and parse the battery data using the `node-usb` library:
 
 ```typescript
-endpoint.startPoll(1, 64);
+// 1. Claim Interface 2
+const iface = device.interface(2);
+iface.claim();
+
+// 2. Identify and start polling the Interrupt IN endpoint (0x83)
+const endpoint = iface.endpoints.find(e => e.address === 0x83) as InEndpoint;
 
 endpoint.on("data", (data: Buffer) => {
-    if (data.length < 5) return;
+    // Validation: Packet must be at least 5 bytes and match the 03 55 40 01 prefix
+    if (data.length >= 5 &&
+        data[0] === 0x03 &&
+        data[1] === 0x55 &&
+        data[2] === 0x40 &&
+        data[3] === 0x01) {
 
-    const battery = data[4];
-    console.log("Battery:", battery + "%");
+        const batteryLevel = data[4];
+        console.log(`Battery Level Updated: ${batteryLevel}%`);
+    }
 });
+
+// Start polling with a 64-byte buffer
+endpoint.startPoll(1, 64);
 ```
 
-## Single Transfer Read (Non-Polling)
+## Technical Summary
 
-It is also possible to read a single battery packet using an interrupt transfer:
-
-```typescript
-endpoint.transfer(64, (err, data) => {
-    if (err) throw err;
-
-    const battery = data[4];
-    console.log("Battery:", battery + "%");
-});
-```
-
-## Recommended Implementation Pattern
-
-To avoid excessive logging, it is recommended to:
-
-* Store the last known battery value
-* Emit updates only when the value changes
-
-Pseudo-logic:
-
-```typescript
-if (battery !== lastBattery) {
-    lastBattery = battery;
-    emit(battery);
-}
-```
-
-## Summary
-
-* Interface: `2`
-* Endpoint: `0x83` (Interrupt IN)
-* Battery location: `Byte[4]`
-* Value format: Direct percentage (0–100)
-* No checksum
-* No control transfer required
-* Stops emitting while charging (wired mode)
+- **USB Interface**: 2
+- **Endpoint Address**: 0x83
+- **Data Offset**: `Byte[4]`
+- **Format**: Direct Unsigned 8-bit Integer (0–100)
+- **Update Frequency**: Event-driven / Periodic
